@@ -188,10 +188,7 @@ body { font-family:'Noto Sans KR',sans-serif; background:var(--bg); color:var(--
   <input type="text" class="search-box" id="search" placeholder="도로명 검색..." oninput="filterRoads()">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
     <div class="section-title" style="margin-bottom:0;padding-bottom:0;border-bottom:none;">수종</div>
-    <div style="display:flex;gap:4px;">
-      <button class="sp-all-btn" onclick="setAllSpecies(true)">전체 선택</button>
-      <button class="sp-all-btn" onclick="setAllSpecies(false)">전체 해제</button>
-    </div>
+    <button class="sp-all-btn" onclick="toggleAllSpecies()" id="spToggleBtn">전체 해제</button>
   </div>
   <div class="species-toggles" id="speciesToggle"></div>
   <div class="height-filter">
@@ -480,7 +477,9 @@ function updateVisibility() {
 map.on('zoomend', updateVisibility);
 map.on('moveend', () => { if (map.getZoom() < 16) buildLabels(); });
 
-async function setAllSpecies(checked) {
+async function toggleAllSpecies() {
+  const allActive = Object.values(DATA).every(sp => sp.active);
+  const checked = !allActive;
   for (const key of Object.keys(DATA)) {
     DATA[key].active = checked;
     if (checked && !DATA[key].loaded) await loadSpecies(key);
@@ -491,6 +490,7 @@ async function setAllSpecies(checked) {
   updateStats();
   updateVisibility();
   renderRoadList();
+  document.getElementById('spToggleBtn').textContent = checked ? '전체 해제' : '전체 선택';
 }
 
 async function toggleSpecies(key, checked) {
@@ -505,6 +505,7 @@ async function toggleSpecies(key, checked) {
   updateStats();
   updateVisibility();
   renderRoadList();
+  document.getElementById('spToggleBtn').textContent = Object.values(DATA).every(sp => sp.active) ? '전체 해제' : '전체 선택';
 }
 
 // Gu filters
