@@ -372,7 +372,7 @@ function buildSpecies(key) {
       radius: 5, fillColor: sp.markerFill, fillOpacity: 0.85,
       color: sp.markerStroke, weight: 1
     });
-    m.bindPopup(`<b>${t.name}</b><br>${t.road}<br>${t.gu}`);
+    m.bindPopup(`<b>${t.name}</b><br>${t.road}<br>${t.gu}${t.h ? '<br>높이 ' + t.h + 'm' : ''}`);
     ly.treeGroup.addLayer(m);
   });
 
