@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>서울 가로수 지도</title>
+<meta property="og:title" content="서울 가로수 지도">
+<meta property="og:description" content="서울시 가로수 257,000그루의 위치를 수종별로 시각화한 인터랙티브 지도">
+<meta property="og:image" content="og-image.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15/dist/nouislider.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/nouislider@15/dist/nouislider.min.js"></script>
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=3aae22bdec61d2370b3bf0f6f64b7313&autoload=false"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #ffffff; --text: #1a1a2e;
+  --panel-bg: rgba(255,255,255,0.85);
+  --panel-border: rgba(180,180,180,0.3);
+  --input-bg: #f8f8f8;
+}
+body { font-family:'Noto Sans KR',sans-serif; background:var(--bg); color:var(--text); height:100vh; overflow:hidden; }
+#map { position:absolute; top:0; left:0; right:0; bottom:0; z-index:1; }
+.header {
+  position:absolute; top:0; left:0; right:0; z-index:1000;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 20px; background:var(--panel-bg);
+  backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--panel-border);
+}
+.header h1 { font-size:20px; font-weight:700; color:var(--text); }
+.header-stats { font-size:13px; color:#888; margin-left:12px; font-weight:500; }
+.header-hint { font-size:12px; color:#666; background:#fff7e0; border:1px solid #f5d97a; padding:6px 12px; border-radius:999px; }
+.panel {
+  position:absolute; top:56px; left:0; bottom:0; width:300px; z-index:999;
+  background:var(--panel-bg); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+  border-right:1px solid var(--panel-border); overflow-y:auto; padding:16px; padding-bottom:60px; transition:transform 0.3s;
+}
+.data-source {
+  position:absolute; bottom:0; left:0; width:300px; z-index:1000;
+  background:var(--panel-bg); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+  border-top:1px solid var(--panel-border); border-right:1px solid var(--panel-border);
+  padding:10px 16px; font-size:11px; color:#999; line-height:1.5;
+  transition:transform 0.3s;
+}
+.panel.collapsed ~ .data-source { transform:translateX(-300px); }
+.panel.collapsed { transform:translateX(-300px); }
+.panel-toggle {
+  position:absolute; top:66px; left:300px; z-index:999;
+  background:var(--panel-bg); backdrop-filter:blur(20px);
+  border:1px solid var(--panel-border); border-left:none;
+  border-radius:0 8px 8px 0; padding:8px 6px; cursor:pointer;
+  font-size:14px; color:var(--text); transition:left 0.3s;
+}
+.panel.collapsed + .panel-toggle { left:0; }
+.search-box {
+  width:100%; padding:10px 12px; border-radius:8px;
+  border:1px solid var(--panel-border); background:var(--input-bg);
+  font-size:14px; color:var(--text); font-family:inherit;
+  margin-bottom:12px; outline:none;
+}
+.search-box:focus { border-color:#FFA000; }
+.section-title {
+  font-size:12px; font-weight:600; text-transform:uppercase;
+  letter-spacing:1px; color:#888; margin-bottom:8px;
+  padding-bottom:4px; border-bottom:1px solid var(--panel-border);
+}
+.species-toggles { margin-bottom:16px; display:flex; flex-wrap:wrap; gap:6px; }
+.species-pill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:5px 12px; border-radius:999px; cursor:pointer;
+  font-size:12px; font-weight:600; border:1.5px solid transparent;
+  transition:all 0.2s; user-select:none; white-space:nowrap;
+}
+.species-pill input { display:none; }
+.species-pill .sp-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.species-pill.inactive { background:#f5f5f5; color:#aaa; border-color:#e5e5e5; }
+.species-pill.inactive .sp-dot { opacity:0.3; }
+.species-pill .sp-count { font-weight:400; opacity:0.7; }
+.species-pill .sp-pct { font-size:10px; font-weight:400; opacity:0.5; }
+.sp-all-btn {
+  padding:2px 8px; border-radius:4px; border:1px solid var(--panel-border);
+  background:var(--input-bg); color:#888; font-size:11px; cursor:pointer; font-family:inherit;
+}
+.gu-filters { margin-bottom:16px; }
+.gu-header {
+  display:flex; align-items:center; justify-content:space-between;
+  cursor:pointer; padding-bottom:4px; border-bottom:1px solid var(--panel-border);
+  margin-bottom:8px;
+}
+.gu-header .section-title { margin-bottom:0; padding-bottom:0; border-bottom:none; }
+.gu-arrow { font-size:10px; color:#888; transition:transform 0.2s; }
+.gu-header.open .gu-arrow { transform:rotate(180deg); }
+.gu-body { display:none; }
+.gu-body.open { display:block; }
+.gu-all { display:flex; gap:6px; margin-bottom:8px; }
+.gu-all button {
+  flex:1; padding:4px 8px; border-radius:6px; border:1px solid var(--panel-border);
+  background:var(--input-bg); color:var(--text); font-size:12px; cursor:pointer; font-family:inherit;
+}
+.gu-grid { display:grid; grid-template-columns:1fr 1fr; gap:2px; }
+.gu-item {
+  display:flex; align-items:center; gap:4px; padding:3px 4px;
+  border-radius:4px; cursor:pointer; font-size:12px;
+}
+.gu-item .count { color:#999; font-size:11px; margin-left:auto; }
+.top-roads { margin-bottom:16px; }
+.road-item {
+  display:flex; align-items:center; padding:8px; border-radius:8px; cursor:pointer; margin-bottom:2px;
+  transition:background 0.2s;
+}
+.road-item:hover { background:rgba(0,0,0,0.04); }
+.road-rank {
+  width:22px; height:22px; border-radius:50%;
+  color:#fff; font-size:11px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  margin-right:8px; flex-shrink:0;
+}
+.road-info { flex:1; min-width:0; }
+.road-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.road-gu { font-size:11px; color:#999; }
+.road-count { font-size:13px; font-weight:700; margin-left:8px; }
+.no-results { text-align:center; color:#999; font-size:13px; padding:20px 0; }
+.height-filter { margin-bottom:16px; }
+.height-filter .section-title { margin-bottom:12px; }
+.height-values { display:flex; justify-content:space-between; font-size:11px; color:#888; margin-top:8px; }
+#heightSlider { margin:0 8px; }
+.noUi-target {
+  background:#ccc !important; border-radius:10px !important;
+  border:none !important; box-shadow:none !important;
+}
+#heightSlider .noUi-connect { background:#3b99fc; }
+#heightSlider .noUi-handle {
+  width:18px; height:18px; border-radius:50%;
+  top:0px; right:-9px;
+  background:#fff; border:1px solid #8c8c8c;
+  box-shadow:0 1px 4px rgba(0,0,0,0.12);
+  cursor:grab;
+}
+#heightSlider .noUi-handle:active { cursor:grabbing; }
+#heightSlider .noUi-handle:before, #heightSlider .noUi-handle:after { display:none; }
+/* Roadview top pane (occupies top 2/3 below header) */
+.rv-pane {
+  position:fixed; top:56px; left:0; right:0;
+  height:calc((100vh - 56px) * 2 / 3);
+  background:#000; z-index:1500;
+  display:none; flex-direction:column;
+  box-shadow:0 6px 20px rgba(0,0,0,0.25);
+}
+.rv-pane.open { display:flex; }
+.rv-pane-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 16px; background:rgba(0,0,0,0.85); color:#fff;
+  font-size:14px; flex-shrink:0;
+}
+.rv-pane-header .rv-title { font-weight:600; }
+.rv-pane-header .rv-info { font-weight:400; font-size:12px; color:#ccc; margin-left:10px; }
+.rv-close {
+  background:rgba(255,255,255,0.12); border:none;
+  color:#fff; font-size:20px; line-height:1; cursor:pointer;
+  width:32px; height:32px; border-radius:6px;
+}
+.rv-close:hover { background:rgba(255,255,255,0.22); }
+.rv-container { flex:1; position:relative; background:#1a1a1a; }
+.rv-empty {
+  display:flex; align-items:center; justify-content:center;
+  height:100%; color:#bbb; font-size:14px;
+}
+/* Map walker (roadview viewpoint indicator) */
+.rv-walker {
+  width:60px; height:60px; pointer-events:none;
+  transform-origin: 50% 50%;
+  transition: transform 0.15s ease-out;
+}
+.rv-info-trees { display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.rv-info-trees .rv-tree-chip {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:11px; padding:2px 8px; border-radius:999px;
+  background:rgba(255,255,255,0.12); color:#fff;
+}
+.rv-info-trees .rv-tree-chip .dot { width:7px; height:7px; border-radius:50%; }
+.rv-info-trees .rv-empty-tip { font-size:11px; color:#aaa; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="header">
+  <div style="display:flex;align-items:center;">
+    <h1>🌳 서울 가로수 지도</h1>
+    <span class="header-stats" id="stats"></span>
+  </div>
+  <div class="header-hint">💡 가로수 도트나 라인을 클릭하면 로드뷰가 열려요</div>
+</div>
+<div class="panel" id="panel">
+  <input type="text" class="search-box" id="search" placeholder="도로명 검색..." oninput="filterRoads()">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <div class="section-title" style="margin-bottom:0;padding-bottom:0;border-bottom:none;">수종</div>
+    <button class="sp-all-btn" onclick="toggleAllSpecies()" id="spToggleBtn">전체 해제</button>
+  </div>
+  <div class="species-toggles" id="speciesToggle"></div>
+  <div class="height-filter">
+    <div class="section-title">수목 높이</div>
+    <div id="heightSlider"></div>
+    <div class="height-values"><span id="hMin">0m</span><span id="hMax">30m</span></div>
+  </div>
+  <div class="gu-filters">
+    <div class="gu-header" id="guHeader" onclick="toggleGuPanel()">
+      <span class="section-title">자치구 필터</span>
+      <span class="gu-arrow" id="guArrow">&#9660;</span>
+    </div>
+    <div class="gu-body" id="guBody">
+      <div class="gu-all">
+        <button onclick="setAllGu(true)">전체 선택</button>
+        <button onclick="setAllGu(false)">전체 해제</button>
+      </div>
+      <div class="gu-grid" id="guGrid"></div>
+    </div>
+  </div>
+  <div class="top-roads">
+    <div class="section-title">가로수길 TOP</div>
+    <div id="roadList"></div>
+  </div>
+</div>
+<div class="data-source" id="dataSource">
+  서울 열린데이터광장 · <a href="https://data.seoul.go.kr/dataList/OA-1325/S/1/datasetView.do" target="_blank" style="color:#FFA000;">가로수 위치정보 (OA-1325)</a>
+</div>
+<button class="panel-toggle" id="panelToggle" onclick="togglePanel()">◀</button>
+<div class="rv-pane" id="rvPane">
+  <div class="rv-pane-header">
+    <div><span class="rv-title">🛣️ 로드뷰</span><span class="rv-info" id="rvInfo"></span></div>
+    <button class="rv-close" onclick="closeRoadview()" title="닫기">×</button>
+  </div>
+  <div class="rv-container" id="rvContainer"></div>
+</div>
+
+<script>
+const DATA = {
+  ginkgo:     { trees:[], roads:[], color:'#f0b429', markerFill:'#fce588', markerStroke:'#d99e10', label:'은행나무', active:true, loaded:false },
+  platanus:   { trees:[], roads:[], color:'#47b881', markerFill:'#a3d9b1', markerStroke:'#2d9a64', label:'버즘나무', active:true, loaded:false },
+  zelkova:    { trees:[], roads:[], color:'#a78a6e', markerFill:'#d6c4ae', markerStroke:'#8a6d50', label:'느티나무', active:true, loaded:false },
+  cherry:     { trees:[], roads:[], color:'#f283a5', markerFill:'#fcc4d4', markerStroke:'#e0608a', label:'벚나무', active:true, loaded:false },
+  metasequoia:{ trees:[], roads:[], color:'#3cc0ad', markerFill:'#96e0d5', markerStroke:'#20a08e', label:'메타세쿼이아', active:true, loaded:false },
+  pagoda:     { trees:[], roads:[], color:'#a78bfa', markerFill:'#d4c4fe', markerStroke:'#8468e0', label:'회화나무', active:true, loaded:false },
+  pine:       { trees:[], roads:[], color:'#5b9fd6', markerFill:'#adcfea', markerStroke:'#3a82ba', label:'소나무', active:true, loaded:false },
+  snowbell:   { trees:[], roads:[], color:'#e6c84e', markerFill:'#f5e8a0', markerStroke:'#c4a520', label:'이팝나무', active:true, loaded:false },
+  maple:      { trees:[], roads:[], color:'#e8705a', markerFill:'#f4b4a8', markerStroke:'#d04e38', label:'단풍류', active:true, loaded:false },
+  etc:        { trees:[], roads:[], color:'#b0b0b0', markerFill:'#d8d8d8', markerStroke:'#909090', label:'기타', active:true, loaded:false }
+};
+
+// In Kakao Map: smaller level = more zoomed-in. Threshold for showing tree markers.
+const TREE_LEVEL_MAX = 3;     // level <= 3 → show individual tree markers
+const MAX_TREE_MARKERS = 3000; // viewport cap to avoid DOM overload
+
+let map;
+let activeGus = new Set();
+let polylines = {}; // per-species array of kakao Polyline
+let treeMarkers = []; // current visible tree markers (rebuilt on viewport change)
+let labels = []; // current label CustomOverlays
+let roadview, roadviewClient;
+let walker, walkerEl; // viewpoint indicator on map
+const NEARBY_RADIUS_M = 30; // meters around roadview position
+let heightRange = [0, 30];
+let guCounts = {};
+let GUS = [];
+let totalAllTrees = 0;
+
+async function loadSpecies(key) {
+  if (DATA[key].loaded) return;
+  const [treesRes, roadsRes] = await Promise.all([
+    fetch('data/' + key + '_trees.json'),
+    fetch('data/' + key + '_roads.json')
+  ]);
+  DATA[key].trees = await treesRes.json();
+  DATA[key].roads = await roadsRes.json();
+  DATA[key].loaded = true;
+}
+
+async function loadAllActive() {
+  const promises = Object.keys(DATA).filter(k => DATA[k].active).map(k => loadSpecies(k));
+  await Promise.all(promises);
+}
+
+// Height slider (independent of Kakao SDK)
+const hSlider = document.getElementById('heightSlider');
+noUiSlider.create(hSlider, {
+  start: [0, 30],
+  connect: true,
+  behaviour: 'drag',
+  range: { min: 0, max: 30 },
+  step: 1,
+  tooltips: false,
+  format: { to: v => Math.round(v), from: v => Number(v) }
+});
+hSlider.noUiSlider.on('update', function(values) {
+  heightRange = [values[0], values[1]];
+  document.getElementById('hMin').textContent = values[0] + 'm';
+  document.getElementById('hMax').textContent = values[1] + 'm';
+});
+hSlider.noUiSlider.on('change', function() {
+  if (map) refresh();
+});
+
+function updateStats() {
+  let total = 0;
+  for (const sp of Object.values(DATA)) {
+    if (sp.active) total += sp.trees.length;
+  }
+  document.getElementById('stats').textContent = total ? `${total.toLocaleString()}그루` : '';
+}
+
+function renderSpeciesPills() {
+  const container = document.getElementById('speciesToggle');
+  container.innerHTML = '';
+  for (const [key, sp] of Object.entries(DATA)) {
+    const pct = totalAllTrees ? (sp.trees.length / totalAllTrees * 100).toFixed(1) : '0.0';
+    const pill = document.createElement('label');
+    pill.className = `species-pill ${sp.active ? 'active' : 'inactive'}`;
+    if (sp.active) {
+      pill.style.background = sp.color + '14';
+      pill.style.borderColor = sp.color + '60';
+      pill.style.color = sp.markerStroke;
+    }
+    pill.innerHTML = `<input type="checkbox" ${sp.active ? 'checked' : ''}>` +
+      `<span class="sp-dot" style="background:${sp.color}"></span>` +
+      `${sp.label} <span class="sp-count">${sp.trees.length.toLocaleString()}</span>` +
+      `<span class="sp-pct">${pct}%</span>`;
+    pill.querySelector('input').onchange = function() {
+      toggleSpecies(key, this.checked);
+    };
+    container.appendChild(pill);
+  }
+}
+renderSpeciesPills();
+
+function toggleGuPanel() {
+  document.getElementById('guBody').classList.toggle('open');
+  document.getElementById('guHeader').classList.toggle('open');
+}
+
+function getLineWeight(count) {
+  return Math.min(5, Math.max(1.5, 0.8 + Math.sqrt(count) * 0.2));
+}
+
+// === Kakao Map init ===
+kakao.maps.load(function() {
+  const container = document.getElementById('map');
+  map = new kakao.maps.Map(container, {
+    center: new kakao.maps.LatLng(37.5665, 126.9780),
+    level: 8
+  });
+
+  // Build a MarkerImage per species (small SVG dot)
+  for (const [key, sp] of Object.entries(DATA)) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12">` +
+      `<circle cx="6" cy="6" r="5" fill="${sp.markerFill}" fill-opacity="0.85" stroke="${sp.markerStroke}" stroke-width="1"/>` +
+      `</svg>`;
+    const url = 'data:image/svg+xml;base64,' + btoa(svg);
+    sp.markerImage = new kakao.maps.MarkerImage(
+      url,
+      new kakao.maps.Size(12, 12),
+      { offset: new kakao.maps.Point(6, 6) }
+    );
+  }
+
+  kakao.maps.event.addListener(map, 'zoom_changed', onViewChange);
+  kakao.maps.event.addListener(map, 'idle', onViewChange);
+
+  init();
+});
+
+function ensureWalker(position) {
+  if (walker) {
+    walker.setPosition(position);
+    walker.setMap(map);
+    return;
+  }
+  walkerEl = document.createElement('div');
+  walkerEl.className = 'rv-walker';
+  walkerEl.innerHTML = `
+    <svg width="60" height="60" viewBox="0 0 60 60">
+      <path d="M 30 30 L 11 14.5 A 24 24 0 0 1 49 14.5 Z"
+            fill="rgba(59,153,252,0.30)"
+            stroke="rgba(59,153,252,0.85)" stroke-width="1.2"/>
+      <circle cx="30" cy="30" r="7" fill="#3b99fc" stroke="#fff" stroke-width="2.5"/>
+    </svg>
+  `;
+  walker = new kakao.maps.CustomOverlay({
+    position: position,
+    content: walkerEl,
+    xAnchor: 0.5,
+    yAnchor: 0.5,
+    zIndex: 9999
+  });
+  walker.setMap(map);
+}
+
+function setWalkerAngle(pan) {
+  if (!walkerEl) return;
+  // SVG cone faces north (up); pan increases clockwise from north
+  walkerEl.style.transform = `rotate(${pan}deg)`;
+}
+
+// Nearby tree counting — aggregates by ACTUAL species name (t.name), not broad category
+function findNearbyTrees(latlng, radiusMeters) {
+  const lat0 = latlng.getLat();
+  const lng0 = latlng.getLng();
+  const latRange = radiusMeters / 111000;
+  const lngRange = radiusMeters / (111000 * Math.cos(lat0 * Math.PI / 180));
+  const counts = {}; // name → { color, count }
+  let total = 0;
+  for (const [key, sp] of Object.entries(DATA)) {
+    if (!sp.active) continue;
+    for (const t of sp.trees) {
+      if (Math.abs(t.lat - lat0) > latRange) continue;
+      if (Math.abs(t.lng - lng0) > lngRange) continue;
+      if (!activeGus.has(t.gu)) continue;
+      const name = t.name || sp.label;
+      if (!counts[name]) counts[name] = { color: sp.color, count: 0 };
+      counts[name].count++;
+      total++;
+    }
+  }
+  const list = Object.entries(counts)
+    .map(([name, v]) => ({ name, color: v.color, count: v.count }))
+    .sort((a, b) => b.count - a.count);
+  return { list, total };
+}
+
+function updateNearbyInfo(latlng) {
+  const info = document.getElementById('rvInfo');
+  const { list, total } = findNearbyTrees(latlng, NEARBY_RADIUS_M);
+  if (total === 0) {
+    info.innerHTML = `<span class="rv-empty-tip">반경 ${NEARBY_RADIUS_M}m 내 가로수 없음</span>`;
+    return;
+  }
+  const chips = list.map(r =>
+    `<span class="rv-tree-chip"><span class="dot" style="background:${r.color}"></span>${r.name} ${r.count}</span>`
+  ).join('');
+  info.innerHTML = `<span class="rv-info-trees">반경 ${NEARBY_RADIUS_M}m: ${chips}<span class="rv-empty-tip">총 ${total}그루</span></span>`;
+}
+
+function openRoadview(latlng) {
+  const pane = document.getElementById('rvPane');
+  const container = document.getElementById('rvContainer');
+  pane.classList.add('open');
+  updateNearbyInfo(latlng);
+  container.innerHTML = '<div class="rv-empty">로드뷰 검색 중…</div>';
+
+  if (!roadviewClient) roadviewClient = new kakao.maps.RoadviewClient();
+  roadviewClient.getNearestPanoId(latlng, 50, function(panoId) {
+    if (!panoId) {
+      container.innerHTML = '<div class="rv-empty">이 위치 주변 50m 이내에 로드뷰가 없습니다.</div>';
+      roadview = null;
+      if (walker) walker.setMap(null);
+      return;
+    }
+    container.innerHTML = '';
+    roadview = new kakao.maps.Roadview(container);
+    roadview.setPanoId(panoId, latlng);
+
+    // Place walker at clicked latlng initially
+    ensureWalker(latlng);
+    setWalkerAngle(0);
+
+    kakao.maps.event.addListener(roadview, 'init', function() {
+      const pos = roadview.getPosition();
+      walker.setPosition(pos);
+      const vp = roadview.getViewpoint();
+      setWalkerAngle(vp.pan);
+      updateNearbyInfo(pos);
+      roadview.relayout();
+    });
+    kakao.maps.event.addListener(roadview, 'viewpoint_changed', function() {
+      const vp = roadview.getViewpoint();
+      setWalkerAngle(vp.pan);
+    });
+    kakao.maps.event.addListener(roadview, 'position_changed', function() {
+      const pos = roadview.getPosition();
+      walker.setPosition(pos);
+      updateNearbyInfo(pos);
+    });
+  });
+}
+
+function closeRoadview() {
+  document.getElementById('rvPane').classList.remove('open');
+  document.getElementById('rvContainer').innerHTML = '';
+  document.getElementById('rvInfo').textContent = '';
+  if (walker) walker.setMap(null);
+  roadview = null;
+}
+window.closeRoadview = closeRoadview;
+
+// === Polylines (roads) ===
+function buildPolylines(key) {
+  if (polylines[key]) polylines[key].forEach(p => p.setMap(null));
+  polylines[key] = [];
+
+  const sp = DATA[key];
+
+  const roadHeightCounts = {};
+  sp.trees.forEach(t => {
+    if (!activeGus.has(t.gu)) return;
+    const rkey = t.road + '|' + t.gu;
+    if (!roadHeightCounts[rkey]) roadHeightCounts[rkey] = 0;
+    if (t.h === 0 || (t.h >= heightRange[0] && t.h <= heightRange[1])) {
+      roadHeightCounts[rkey]++;
+    }
+  });
+
+  sp.roads.filter(r => activeGus.has(r.gu) && r.segments && r.segments.length > 0).forEach(r => {
+    const rkey = r.road + '|' + r.gu;
+    const filteredCount = roadHeightCounts[rkey] || 0;
+    if (filteredCount === 0) return;
+    const weight = getLineWeight(filteredCount);
+    const types = Object.entries(r.types).map(([k,v]) => `${k}: ${v}`).join('<br>');
+
+    r.segments.forEach(seg => {
+      const path = seg.map(([lat, lng]) => new kakao.maps.LatLng(lat, lng));
+      const line = new kakao.maps.Polyline({
+        path: path,
+        strokeWeight: weight,
+        strokeColor: sp.color,
+        strokeOpacity: 0.9,
+        strokeStyle: 'solid'
+      });
+      kakao.maps.event.addListener(line, 'click', function(mouseEvent) {
+        openRoadview(mouseEvent.latLng);
+      });
+      polylines[key].push(line);
+    });
+  });
+}
+
+// === Tree markers (visible viewport only) ===
+function buildVisibleTrees() {
+  treeMarkers.forEach(m => m.setMap(null));
+  treeMarkers = [];
+
+  if (map.getLevel() > TREE_LEVEL_MAX) return;
+
+  const bounds = map.getBounds();
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const minLat = sw.getLat(), maxLat = ne.getLat();
+  const minLng = sw.getLng(), maxLng = ne.getLng();
+
+  const collected = [];
+  outer:
+  for (const [key, sp] of Object.entries(DATA)) {
+    if (!sp.active) continue;
+    for (const t of sp.trees) {
+      if (t.lat < minLat || t.lat > maxLat) continue;
+      if (t.lng < minLng || t.lng > maxLng) continue;
+      if (!activeGus.has(t.gu)) continue;
+      if (t.h !== 0 && (t.h < heightRange[0] || t.h > heightRange[1])) continue;
+      collected.push({ t, sp });
+      if (collected.length >= MAX_TREE_MARKERS) break outer;
+    }
+  }
+
+  collected.forEach(({ t, sp }) => {
+    const marker = new kakao.maps.Marker({
+      position: new kakao.maps.LatLng(t.lat, t.lng),
+      image: sp.markerImage,
+      clickable: true
+    });
+    marker.setMap(map);
+    kakao.maps.event.addListener(marker, 'click', function() {
+      openRoadview(marker.getPosition());
+    });
+    treeMarkers.push(marker);
+  });
+}
+
+// === Labels (road names) — pixel collision via linear viewport approx ===
+function buildLabels() {
+  labels.forEach(l => l.setMap(null));
+  labels = [];
+
+  const level = map.getLevel();
+  if (level <= TREE_LEVEL_MAX) return; // hide labels when individual trees show
+
+  let maxLabels;
+  if (level >= 9) maxLabels = 5;
+  else if (level >= 8) maxLabels = 10;
+  else if (level >= 7) maxLabels = 20;
+  else if (level >= 5) maxLabels = 40;
+  else maxLabels = 999;
+
+  let allRoads = [];
+  for (const [key, sp] of Object.entries(DATA)) {
+    if (!sp.active) continue;
+    sp.roads.filter(r => activeGus.has(r.gu) && r.segments && r.segments.length > 0)
+      .forEach(r => allRoads.push({ ...r, color: sp.color }));
+  }
+  allRoads.sort((a, b) => b.count - a.count);
+
+  // Linear viewport projection (good enough for collision over a small zoom range)
+  const bounds = map.getBounds();
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const node = map.getNode();
+  const W = node.offsetWidth;
+  const H = node.offsetHeight;
+  const dLat = ne.getLat() - sw.getLat();
+  const dLng = ne.getLng() - sw.getLng();
+  function toPixel(lat, lng) {
+    return {
+      x: (lng - sw.getLng()) / dLng * W,
+      y: (1 - (lat - sw.getLat()) / dLat) * H
+    };
+  }
+
+  const placed = [];
+  let count = 0;
+  for (const r of allRoads) {
+    if (count >= maxLabels) break;
+    const pt = toPixel(r.center_lat, r.center_lng);
+    if (pt.x < 0 || pt.x > W || pt.y < 0 || pt.y > H) continue;
+    const text = r.road + ' (' + r.count + ')';
+    const w = text.length * 7;
+    const h = 16;
+    const box = { x: pt.x - w/2, y: pt.y - h/2, w, h };
+    const overlaps = placed.some(b =>
+      box.x < b.x + b.w + 8 && box.x + box.w + 8 > b.x &&
+      box.y < b.y + b.h + 4 && box.y + box.h + 4 > b.y
+    );
+    if (overlaps) continue;
+    placed.push(box);
+
+    const label = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(r.center_lat, r.center_lng),
+      content: `<div style="white-space:nowrap;font-size:11px;font-weight:600;color:${r.color};text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 0 4px #fff;pointer-events:none;">${text}</div>`,
+      xAnchor: 0.5,
+      yAnchor: 0.5,
+      clickable: false,
+      zIndex: 100
+    });
+    label.setMap(map);
+    labels.push(label);
+    count++;
+  }
+}
+
+// === Visibility coordinator ===
+function updateVisibility() {
+  const level = map.getLevel();
+  for (const [key, sp] of Object.entries(DATA)) {
+    const lines = polylines[key] || [];
+    if (!sp.active || level <= TREE_LEVEL_MAX) {
+      lines.forEach(p => p.setMap(null));
+    } else {
+      lines.forEach(p => p.setMap(map));
+    }
+  }
+}
+
+function onViewChange() {
+  updateVisibility();
+  if (map.getLevel() <= TREE_LEVEL_MAX) {
+    buildVisibleTrees();
+  } else {
+    // ensure markers cleared when zooming out
+    if (treeMarkers.length) { treeMarkers.forEach(m => m.setMap(null)); treeMarkers = []; }
+    buildLabels();
+  }
+}
+
+// === Species/Gu toggles ===
+async function toggleAllSpecies() {
+  const allActive = Object.values(DATA).every(sp => sp.active);
+  const checked = !allActive;
+  for (const key of Object.keys(DATA)) {
+    DATA[key].active = checked;
+    if (checked && !DATA[key].loaded) await loadSpecies(key);
+  }
+  if (checked) { buildGuData(); buildGuFilters(); }
+  for (const key of Object.keys(DATA)) buildPolylines(key);
+  renderSpeciesPills();
+  updateStats();
+  onViewChange();
+  renderRoadList();
+  document.getElementById('spToggleBtn').textContent = checked ? '전체 해제' : '전체 선택';
+}
+
+async function toggleSpecies(key, checked) {
+  DATA[key].active = checked;
+  if (checked && !DATA[key].loaded) {
+    await loadSpecies(key);
+    buildGuData();
+    buildGuFilters();
+  }
+  buildPolylines(key);
+  renderSpeciesPills();
+  updateStats();
+  onViewChange();
+  renderRoadList();
+  document.getElementById('spToggleBtn').textContent = Object.values(DATA).every(sp => sp.active) ? '전체 해제' : '전체 선택';
+}
+
+function buildGuFilters() {
+  const grid = document.getElementById('guGrid');
+  grid.innerHTML = '';
+  GUS.forEach(g => {
+    const label = document.createElement('label');
+    label.className = 'gu-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = activeGus.has(g);
+    cb.onchange = () => {
+      if (cb.checked) activeGus.add(g); else activeGus.delete(g);
+      refresh();
+    };
+    const span = document.createElement('span');
+    span.textContent = g;
+    const cnt = document.createElement('span');
+    cnt.className = 'count';
+    cnt.textContent = guCounts[g] || 0;
+    label.append(cb, span, cnt);
+    grid.appendChild(label);
+  });
+}
+
+function setAllGu(checked) {
+  if (checked) GUS.forEach(g => activeGus.add(g));
+  else activeGus.clear();
+  buildGuFilters();
+  refresh();
+}
+
+function renderRoadList(filtered) {
+  const container = document.getElementById('roadList');
+  let allRoads = filtered;
+  if (!allRoads) {
+    allRoads = [];
+    for (const [key, sp] of Object.entries(DATA)) {
+      if (!sp.active) continue;
+      sp.roads.filter(r => activeGus.has(r.gu))
+        .forEach(r => allRoads.push({ ...r, color: sp.color }));
+    }
+    allRoads.sort((a, b) => b.count - a.count);
+  }
+  if (allRoads.length === 0) {
+    container.innerHTML = '<div class="no-results">결과 없음</div>';
+    return;
+  }
+  container.innerHTML = allRoads.slice(0, 30).map((r, i) => `
+    <div class="road-item" onclick="flyToRoad(${r.center_lat},${r.center_lng})">
+      <div class="road-rank" style="background:${r.color};">${i+1}</div>
+      <div class="road-info">
+        <div class="road-name">${r.road}</div>
+        <div class="road-gu">${r.gu}</div>
+      </div>
+      <div class="road-count" style="color:${r.color};">${r.count}</div>
+    </div>
+  `).join('');
+}
+
+function filterRoads() {
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  if (!q) { renderRoadList(); return; }
+  let matched = [];
+  for (const [key, sp] of Object.entries(DATA)) {
+    if (!sp.active) continue;
+    sp.roads.filter(r => activeGus.has(r.gu) && (r.road.toLowerCase().includes(q) || r.gu.includes(q)))
+      .forEach(r => matched.push({ ...r, color: sp.color }));
+  }
+  matched.sort((a, b) => b.count - a.count);
+  renderRoadList(matched);
+}
+
+function flyToRoad(lat, lng) {
+  if (!map) return;
+  map.setLevel(3, { animate: true });
+  map.panTo(new kakao.maps.LatLng(lat, lng));
+}
+
+function togglePanel() {
+  const panel = document.getElementById('panel');
+  panel.classList.toggle('collapsed');
+  document.getElementById('panelToggle').textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
+  if (map) setTimeout(() => map.relayout(), 320);
+}
+
+function refresh() {
+  for (const key of Object.keys(DATA)) buildPolylines(key);
+  updateStats();
+  onViewChange();
+  renderRoadList();
+}
+
+function buildGuData() {
+  guCounts = {};
+  for (const [key, sp] of Object.entries(DATA)) {
+    sp.trees.forEach(t => { guCounts[t.gu] = (guCounts[t.gu] || 0) + 1; });
+  }
+  GUS = Object.keys(guCounts).sort();
+  GUS.forEach(g => activeGus.add(g));
+  totalAllTrees = Object.values(DATA).reduce((s, sp) => s + sp.trees.length, 0);
+}
+
+async function init() {
+  document.getElementById('stats').textContent = '데이터 로딩 중...';
+  await loadAllActive();
+  buildGuData();
+  buildGuFilters();
+  for (const key of Object.keys(DATA)) buildPolylines(key);
+  updateStats();
+  renderSpeciesPills();
+  onViewChange();
+  renderRoadList();
+}
+</script>
+</body>
+</html>
